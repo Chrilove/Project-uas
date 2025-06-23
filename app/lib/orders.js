@@ -1,4 +1,4 @@
-// app/lib/orders.js - Enhanced version with order completion functionality
+// app/lib/orders.js - Enhanced version with proper imports
 import { 
   collection, 
   addDoc, 
@@ -9,10 +9,13 @@ import {
   query,
   where,
   orderBy,
-  serverTimestamp 
+  serverTimestamp,
+  writeBatch,  // ← TAMBAHKAN INI (missing import)
+  deleteDoc    // ← TAMBAHKAN INI (missing import)
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { createPaymentTransaction } from './payments';
+import { createShipmentFromOrder } from './shipments'; // ← TAMBAHKAN INI
 
 // Generate order number
 export const generateOrderNumber = () => {
@@ -42,10 +45,10 @@ export const createOrder = async (userId, orderData) => {
       paymentProof: '',
       paymentProofURL: '',
       adminMessage: '',
-      trackingNumber: '', // Add tracking number field
-      estimatedDelivery: null, // Add estimated delivery field
-      actualDelivery: null, // Add actual delivery field
-      resellerConfirmation: false, // Add reseller confirmation field
+      trackingNumber: '',
+      estimatedDelivery: null,
+      actualDelivery: null,
+      resellerConfirmation: false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
@@ -76,6 +79,37 @@ export const updateOrderStatus = async (orderId, status, adminMessage = '', addi
       updateData.resellerConfirmation = true;
       updateData.actualDelivery = serverTimestamp();
       updateData.adminMessage = adminMessage || 'Pesanan telah dikonfirmasi diterima oleh reseller';
+    }
+
+    // If status is shipped, create shipment automatically
+    if (status === 'shipped' && additionalData.createShipment) {
+      const orderDoc = await getDoc(orderRef);
+      if (orderDoc.exists()) {
+        const orderData = orderDoc.data();
+        const shipmentData = {
+          orderId: orderId,
+          orderNumber: orderData.orderNumber,
+          customerId: orderData.resellerId,
+          customerName: orderData.resellerName,
+          customerEmail: orderData.resellerEmail,
+          customerPhone: orderData.resellerPhone,
+          shippingAddress: orderData.shippingAddress,
+          resellerId: orderData.resellerId,
+          resellerName: orderData.resellerName,
+          items: orderData.products,
+          totalWeight: additionalData.totalWeight || 1,
+          shippingMethod: additionalData.shippingMethod || 'Regular',
+          shippingCost: additionalData.shippingCost || 0,
+          courier: additionalData.courier || 'JNE',
+          estimatedDelivery: additionalData.estimatedDelivery,
+          notes: additionalData.notes || ''
+        };
+
+        const shipmentResult = await createShipmentFromOrder(shipmentData);
+        if (shipmentResult.success) {
+          updateData.trackingNumber = shipmentResult.trackingNumber;
+        }
+      }
     }
 
     await updateDoc(orderRef, updateData);
@@ -191,7 +225,7 @@ export const updatePaymentProof = async (orderId, paymentMethod, paymentProof, p
       resellerId: orderData.resellerId,
       amount: orderData.totalAmount,
       method: paymentMethod,
-      reference: paymentProof, // Use payment proof as reference
+      reference: paymentProof,
       status: 'processing',
       type: 'payment',
       description: `Payment proof submitted for order ${orderData.orderNumber}`
@@ -206,7 +240,7 @@ export const updatePaymentProof = async (orderId, paymentMethod, paymentProof, p
   }
 };
 
-// Confirm order received by reseller (NEW FUNCTION)
+// Confirm order received by reseller
 export const confirmOrderReceived = async (orderId, resellerId, confirmationMessage = '') => {
   try {
     const orderRef = doc(db, 'orders', orderId);
