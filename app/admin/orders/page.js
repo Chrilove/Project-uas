@@ -354,7 +354,7 @@ export default function AdminOrdersPage() {
                   Menampilkan {startIndex + 1} - {Math.min(endIndex, filteredOrders.length)} dari {filteredOrders.length} pesanan
                   {searchTerm && (
                     <span className="ms-2">
-                      <span className="badge bg-info">Pencarian: "{searchTerm}"</span>
+                      <span className="badge bg-info">Pencarian: &quot;{searchTerm}&quot;</span>
                     </span>
                   )}
                 </div>
@@ -395,7 +395,7 @@ export default function AdminOrdersPage() {
                               <td colSpan="8" className="text-center py-4">
                                 {filteredOrders.length === 0 && searchTerm ? (
                                   <>
-                                    Tidak ada pesanan yang cocok dengan pencarian "{searchTerm}"
+                                    Tidak ada pesanan yang cocok dengan pencarian &quot;{searchTerm}&quot;
                                     <br/>
                                     <button 
                                       className="btn btn-sm btn-outline-primary mt-2"
@@ -540,7 +540,7 @@ export default function AdminOrdersPage() {
             </div>
           </div>
 
-          {/* Action Modal - Same as before */}
+          {/* Action Modal */}
           {showModal && selectedOrder && (
             <div className="modal fade show d-block" style={{backgroundColor: 'rgba(0,0,0,0.5)'}}>
               <div className="modal-dialog modal-lg">
@@ -758,31 +758,30 @@ export default function AdminOrdersPage() {
                             >
                               🎉 Selesaikan Pesanan
                             </button>
-                            )}
-                          
-                            {!['completed', 'cancelled'].includes(selectedOrder.status) && (
-                              <button 
-                                className="btn btn-danger"
-                                onClick={() => handleStatusUpdate(selectedOrder.id, 'cancelled', 'Pesanan dibatalkan oleh admin')}
-                              >
-                                ❌ Batalkan Pesanan
-                              </button>
-                            )}
-                          </div>
+                          )}
+                        {!['completed', 'cancelled'].includes(selectedOrder.status) && (
+                            <button 
+                              className="btn btn-danger"
+                              onClick={() => handleStatusUpdate(selectedOrder.id, 'cancelled', 'Pesanan dibatalkan oleh admin')}
+                            >
+                              ❌ Batalkan Pesanan
+                            </button>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div className="modal-footer">
-                      <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
-                        Tutup
-                      </button>
-                    </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                      Tutup
+                    </button>
                   </div>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
