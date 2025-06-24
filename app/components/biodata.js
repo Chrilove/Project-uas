@@ -7,7 +7,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Biodata - John Doe</title>
+        <title>Biodata</title>
         <meta name="description" content="Biodata singkat" />
         <link rel="icon" href="/favicon.ico" />
         <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet" />
@@ -118,8 +118,10 @@ export default function Home() {
           </div>
         </div>
       </div>
-
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+      <Script 
+        src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js" 
+        strategy="afterInteractive" 
+      />
     </>
   )
 }
