@@ -215,7 +215,7 @@ export default function AdminReportPage() {
                         Total Pesanan
                       </div>
                       <div className="h5 mb-0 fw-bold text-gray-800">
-                        {orderStats?.totalOrders || 0}
+                        {orderStats?.total || 0}
                       </div>
                     </div>
                   </div>
@@ -298,22 +298,22 @@ export default function AdminReportPage() {
                   <div className="row">
                     <div className="col-6 col-md-3 text-center mb-3">
                       <div className="text-warning" style={{ fontSize: '2.5rem' }}>⏳</div>
-                      <div className="fw-bold">{orderStats?.pendingOrders || 0}</div>
+                      <div className="fw-bold">{orderStats?.pending || 0}</div>
                       <div className="text-muted small">Menunggu</div>
                     </div>
                     <div className="col-6 col-md-3 text-center mb-3">
                       <div className="text-info" style={{ fontSize: '2.5rem' }}>✅</div>
-                      <div className="fw-bold">{orderStats?.confirmedOrders || 0}</div>
+                      <div className="fw-bold">{orderStats?.confirmed || 0}</div>
                       <div className="text-muted small">Dikonfirmasi</div>
                     </div>
                     <div className="col-6 col-md-3 text-center mb-3">
                       <div className="text-success" style={{ fontSize: '2.5rem' }}>🎉</div>
-                      <div className="fw-bold">{orderStats?.completedOrders || 0}</div>
+                      <div className="fw-bold">{orderStats?.completed || 0}</div>
                       <div className="text-muted small">Selesai</div>
                     </div>
                     <div className="col-6 col-md-3 text-center mb-3">
                       <div className="text-danger" style={{ fontSize: '2.5rem' }}>❌</div>
-                      <div className="fw-bold">{orderStats?.cancelledOrders || 0}</div>
+                      <div className="fw-bold">{orderStats?.cancelled || 0}</div>
                       <div className="text-muted small">Dibatalkan</div>
                     </div>
                   </div>
@@ -329,7 +329,7 @@ export default function AdminReportPage() {
                 <div className="card-body">
                   <div className="d-flex justify-content-between align-items-center mb-3">
                     <span className="text-muted">Dalam Perjalanan</span>
-                    <span className="fw-bold text-primary">{shipmentStats?.inTransit || 0}</span>
+                    <span className="fw-bold text-primary">{shipmentStats?.shipped || 0}</span>
                   </div>
                   <div className="d-flex justify-content-between align-items-center mb-3">
                     <span className="text-muted">Terkirim</span>
