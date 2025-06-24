@@ -78,7 +78,7 @@ export default function Home() {
                       <div className="text-start mt-4">
                         <div className="mb-2">
                           <strong>Universitas:</strong><br/>
-                          <span className="text-muted">Universitas Ma'soem</span>
+                          <span className="text-muted">Universitas Masoem</span>
                         </div>
                         <div className="mb-2">
                           <strong>Jurusan:</strong><br/>
