@@ -522,6 +522,7 @@ export default function ProductsPage() {
                     <option value="Makeup">Makeup</option>
                     <option value="Haircare">Haircare</option>
                     <option value="Fragrance">Fragrance</option>
+                    <option value="Bodycare">Bodycare</option>
                   </select>
                 </div>
                 <div className="col-md-3 mb-3">
@@ -741,6 +742,7 @@ export default function ProductsPage() {
                         <option value="Makeup">Makeup</option>
                         <option value="Haircare">Haircare</option>
                         <option value="Fragrance">Fragrance</option>
+                        <option value="Bodycare">Bodycare</option>
                       </select>
                     </div>
                     <div className="col-md-6 mb-3">
