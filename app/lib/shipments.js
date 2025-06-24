@@ -168,3 +168,36 @@ export const getShipmentsByReseller = async (resellerId) => {
     return { success: false, error: error.message };
   }
 };
+// Hitung statistik pengiriman
+export const getShipmentStats = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'shipments'));
+    const shipments = querySnapshot.docs.map(doc => doc.data());
+
+    const stats = {
+      total: shipments.length,
+      pending: shipments.filter(s => s.status === 'pending').length,
+      processed: shipments.filter(s => s.status === 'processed').length,
+      shipped: shipments.filter(s => s.status === 'shipped').length,
+      delivered: shipments.filter(s => s.status === 'delivered').length,
+      cancelled: shipments.filter(s => s.status === 'cancelled').length,
+    };
+
+    return { success: true, stats };
+  } catch (error) {
+    console.error('Error getting shipment stats:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Hapus pengiriman (admin only)
+export const deleteShipment = async (shipmentId) => {
+  try {
+    const shipmentRef = doc(db, 'shipments', shipmentId);
+    await deleteDoc(shipmentRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting shipment:', error);
+    return { success: false, error: error.message };
+  }
+};
