@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { getAllOrders, updateOrderStatus, updatePaymentStatus } from '../../lib/orders';
 import { formatCurrency } from '../../lib/payments';
 import Sidebar from '../../components/Sidebar';
+import Image from 'next/image';
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState([]);
@@ -600,10 +601,10 @@ export default function AdminOrdersPage() {
                           <div className="mb-3">
                             <strong>Bukti Pembayaran:</strong>
                             <div className="mt-2">
-                              <img 
+                              <Image 
                                 src={selectedOrder.paymentProofURL} 
                                 alt="Bukti Pembayaran" 
-                                className="img-thumbnail"
+                                className="Image-thumbnail"
                                 style={{maxWidth: '300px'}}
                               />
                             </div>
@@ -671,10 +672,10 @@ export default function AdminOrdersPage() {
                           <div className="mb-3 text-center">
                             <strong>Bukti Pembayaran:</strong>
                             <div className="mt-2">
-                              <img 
+                              <Image 
                                 src={selectedOrder.paymentProofURL} 
                                 alt="Bukti Pembayaran" 
-                                className="img-thumbnail"
+                                className="Image-thumbnail"
                                 style={{maxWidth: '400px', maxHeight: '300px'}}
                               />
                             </div>
