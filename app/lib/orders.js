@@ -10,12 +10,12 @@ import {
   where,
   orderBy,
   serverTimestamp,
-  writeBatch,  // ← TAMBAHKAN INI (missing import)
-  deleteDoc    // ← TAMBAHKAN INI (missing import)
+  writeBatch,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { createPaymentTransaction } from './payments';
-import { createShipmentFromOrder } from './shipments'; // ← TAMBAHKAN INI
+import { createShipmentFromOrder } from './shipments';
 
 // Generate order number
 export const generateOrderNumber = () => {
@@ -62,7 +62,7 @@ export const createOrder = async (userId, orderData) => {
   }
 };
 
-// Update order status (for admin and resellers)
+// Update order status (for admin and resellers) - FIXED VERSION
 export const updateOrderStatus = async (orderId, status, adminMessage = '', additionalData = {}) => {
   try {
     const orderRef = doc(db, 'orders', orderId);
@@ -81,13 +81,15 @@ export const updateOrderStatus = async (orderId, status, adminMessage = '', addi
       updateData.adminMessage = adminMessage || 'Pesanan telah dikonfirmasi diterima oleh reseller';
     }
 
-    // If status is shipped, create shipment automatically
+    // If status is shipped, create shipment automatically - FIXED VERSION
     if (status === 'shipped' && additionalData.createShipment) {
       const orderDoc = await getDoc(orderRef);
       if (orderDoc.exists()) {
         const orderData = orderDoc.data();
-        const shipmentData = {
-          orderId: orderId,
+        
+        // FIX: Structure data sesuai dengan yang diharapkan createShipmentFromOrder
+        const shipmentOrderData = {
+          id: orderId, // ← KEY FIX: gunakan 'id' bukan 'orderId'
           orderNumber: orderData.orderNumber,
           customerId: orderData.resellerId,
           customerName: orderData.resellerName,
@@ -96,7 +98,8 @@ export const updateOrderStatus = async (orderId, status, adminMessage = '', addi
           shippingAddress: orderData.shippingAddress,
           resellerId: orderData.resellerId,
           resellerName: orderData.resellerName,
-          items: orderData.products,
+          resellerEmail: orderData.resellerEmail,
+          items: orderData.products, // products -> items
           totalWeight: additionalData.totalWeight || 1,
           shippingMethod: additionalData.shippingMethod || 'Regular',
           shippingCost: additionalData.shippingCost || 0,
@@ -105,9 +108,25 @@ export const updateOrderStatus = async (orderId, status, adminMessage = '', addi
           notes: additionalData.notes || ''
         };
 
-        const shipmentResult = await createShipmentFromOrder(shipmentData);
+        // Shipping data terpisah
+        const shippingData = {
+          courier: additionalData.courier || 'JNE',
+          service: additionalData.service || 'REG',
+          cost: additionalData.shippingCost || 0,
+          estimatedDays: additionalData.estimatedDays || '2-3 hari',
+          notes: additionalData.notes || '',
+          estimatedDelivery: additionalData.estimatedDelivery
+        };
+
+        console.log('Creating shipment with order data:', shipmentOrderData);
+        console.log('Shipping data:', shippingData);
+
+        const shipmentResult = await createShipmentFromOrder(shipmentOrderData, shippingData);
         if (shipmentResult.success) {
           updateData.trackingNumber = shipmentResult.trackingNumber;
+          console.log('Shipment created successfully:', shipmentResult);
+        } else {
+          console.error('Failed to create shipment:', shipmentResult.error);
         }
       }
     }
@@ -489,19 +508,19 @@ export const getOrderStatistics = async (resellerId = null) => {
     const stats = {
       // Basic counts
       total: orders.length,
-      totalOrders: orders.length, // Added this for compatibility
+      totalOrders: orders.length,
       pending: orders.filter(o => o.status === 'pending').length,
-      pendingOrders: orders.filter(o => o.status === 'pending').length, // Added this
+      pendingOrders: orders.filter(o => o.status === 'pending').length,
       confirmed: orders.filter(o => o.status === 'confirmed').length,
-      confirmedOrders: orders.filter(o => o.status === 'confirmed').length, // Added this
+      confirmedOrders: orders.filter(o => o.status === 'confirmed').length,
       processing: orders.filter(o => o.status === 'processing').length,
-      processingOrders: orders.filter(o => o.status === 'processing').length, // Added this
+      processingOrders: orders.filter(o => o.status === 'processing').length,
       shipped: orders.filter(o => o.status === 'shipped').length,
-      shippedOrders: orders.filter(o => o.status === 'shipped').length, // Added this
+      shippedOrders: orders.filter(o => o.status === 'shipped').length,
       completed: orders.filter(o => o.status === 'completed').length,
-      completedOrders: orders.filter(o => o.status === 'completed').length, // Added this
+      completedOrders: orders.filter(o => o.status === 'completed').length,
       cancelled: orders.filter(o => o.status === 'cancelled').length,
-      cancelledOrders: orders.filter(o => o.status === 'cancelled').length, // Added this
+      cancelledOrders: orders.filter(o => o.status === 'cancelled').length,
       
       // Payment status counts
       waitingPayment: orders.filter(o => o.paymentStatus === 'waiting_payment').length,
@@ -523,6 +542,7 @@ export const getOrderStatistics = async (resellerId = null) => {
     return { success: false, error: error.message };
   }
 };
+
 // Delete order (for admin only)
 export const deleteOrder = async (orderId) => {
   try {
