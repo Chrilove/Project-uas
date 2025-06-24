@@ -168,7 +168,7 @@ export const getShipmentsByReseller = async (resellerId) => {
     return { success: false, error: error.message };
   }
 };
-// Hitung statistik pengiriman
+// Hitung statistik pengiriman - FIXED VERSION
 export const getShipmentStats = async () => {
   try {
     const querySnapshot = await getDocs(collection(db, 'shipments'));
@@ -176,11 +176,16 @@ export const getShipmentStats = async () => {
 
     const stats = {
       total: shipments.length,
+      totalShipments: shipments.length, // Added for compatibility
       pending: shipments.filter(s => s.status === 'pending').length,
       processed: shipments.filter(s => s.status === 'processed').length,
       shipped: shipments.filter(s => s.status === 'shipped').length,
+      inTransit: shipments.filter(s => s.status === 'shipped').length, // Added this
       delivered: shipments.filter(s => s.status === 'delivered').length,
       cancelled: shipments.filter(s => s.status === 'cancelled').length,
+      
+      // Calculate total shipping cost
+      totalCost: shipments.reduce((sum, s) => sum + (s.shippingCost || 0), 0)
     };
 
     return { success: true, stats };
@@ -189,7 +194,6 @@ export const getShipmentStats = async () => {
     return { success: false, error: error.message };
   }
 };
-
 // Hapus pengiriman (admin only)
 export const deleteShipment = async (shipmentId) => {
   try {
