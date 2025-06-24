@@ -1,657 +1,575 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Sidebar from '../../components/Sidebar';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { useRouter } from 'next/navigation';
+import { auth } from '@/app/lib/firebase';
+import { getUserProfile } from '@/app/lib/auth';
 import { 
   getAllShipments, 
-  createShipmentFromOrder,
-  updateShipmentStatus,
+  getShipmentStats, 
+  updateShipmentStatus, 
   deleteShipment,
-  getShipmentStats 
-} from '../../lib/shipments';
-import { getAllOrders } from '../../lib/orders';
+  getShipmentByTracking 
+} from '@/app/lib/shipments';
+import Sidebar from '@/app/components/Sidebar';
 
 export default function ShippingPage() {
+  const [user, loading, error] = useAuthState(auth);
+  const [userProfile, setUserProfile] = useState(null);
   const [shipments, setShipments] = useState([]);
-  const [orders, setOrders] = useState([]);
-  const [stats, setStats] = useState({
-    totalShipments: 0,
-    inTransit: 0,
-    delivered: 0,
-    totalCost: 0
-  });
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingShipment, setEditingShipment] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [formData, setFormData] = useState({
-    orderId: '',
-    courier: 'JNE',
-    service: 'REG',
-    cost: '',
-    estimatedDays: '2-3 hari',
-    trackingNumber: '',
-    notes: ''
-  });
+  const [stats, setStats] = useState({});
+  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedShipments, setSelectedShipments] = useState([]);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [selectedShipment, setSelectedShipment] = useState(null);
+  const [newStatus, setNewStatus] = useState('');
+  const [statusNotes, setStatusNotes] = useState('');
+  const itemsPerPage = 10;
+  const router = useRouter();
 
+  // Check authentication and admin role
   useEffect(() => {
-    loadData();
-  }, []);
+    const checkAuth = async () => {
+      if (loading) return;
+      
+      if (!user) {
+        router.push('/login');
+        return;
+      }
+
+      try {
+        const profileResult = await getUserProfile(user.uid);
+        if (profileResult.success) {
+          setUserProfile(profileResult.user);
+          if (profileResult.user.role !== 'admin') {
+            router.push('/dashboard');
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+        router.push('/login');
+      }
+    };
+
+    checkAuth();
+  }, [user, loading, router]);
+
+  // Load shipments and stats
+  useEffect(() => {
+    if (userProfile?.role === 'admin') {
+      loadData();
+    }
+  }, [userProfile, selectedStatus]);
 
   const loadData = async () => {
-    setLoading(true);
+    setIsLoading(true);
     try {
-      const [shipmentsResult, ordersResult, statsResult] = await Promise.all([
-        getAllShipments(),
-        getAllOrders(),
-        getShipmentStats()
-      ]);
-
+      // Load shipments
+      const shipmentsResult = await getAllShipments(selectedStatus);
       if (shipmentsResult.success) {
         setShipments(shipmentsResult.shipments);
       }
 
-      if (ordersResult.success) {
-        // Filter orders that are confirmed and don't have shipments yet
-        const confirmedOrders = ordersResult.orders.filter(order => 
-          order.status === 'confirmed' || order.paymentStatus === 'paid'
-        );
-        setOrders(confirmedOrders);
-      }
-
+      // Load stats
+      const statsResult = await getShipmentStats();
       if (statsResult.success) {
         setStats(statsResult.stats);
       }
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Error loading shipping data:', error);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleCreateShipment = async (e) => {
-    e.preventDefault();
+  // Filter shipments based on search
+  const filteredShipments = shipments.filter(shipment => {
+    const matchesSearch = searchTerm === '' || 
+      shipment.shipmentNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      shipment.trackingNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      shipment.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      shipment.resellerName?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    if (!formData.orderId) {
-      alert('Pilih pesanan terlebih dahulu');
-      return;
-    }
+    return matchesSearch;
+  });
 
-    const selectedOrder = orders.find(order => order.id === formData.orderId);
-    if (!selectedOrder) {
-      alert('Pesanan tidak ditemukan');
-      return;
-    }
+  // Pagination
+  const totalPages = Math.ceil(filteredShipments.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedShipments = filteredShipments.slice(startIndex, startIndex + itemsPerPage);
 
-    const shippingData = {
-      courier: formData.courier,
-      service: formData.service,
-      cost: parseFloat(formData.cost) || 0,
-      estimatedDays: formData.estimatedDays,
-      trackingNumber: formData.trackingNumber,
-      notes: formData.notes
-    };
+  // Handle checkbox selection
+  const handleSelectShipment = (shipmentId) => {
+    setSelectedShipments(prev => 
+      prev.includes(shipmentId) 
+        ? prev.filter(id => id !== shipmentId)
+        : [...prev, shipmentId]
+    );
+  };
 
-    const result = await createShipmentFromOrder(selectedOrder, shippingData);
-    
-    if (result.success) {
-      alert('Pengiriman berhasil dibuat!');
-      setShowModal(false);
-      resetForm();
-      loadData();
+  const handleSelectAll = () => {
+    if (selectedShipments.length === paginatedShipments.length) {
+      setSelectedShipments([]);
     } else {
-      alert('Gagal membuat pengiriman: ' + result.error);
+      setSelectedShipments(paginatedShipments.map(s => s.id));
     }
   };
 
-  const handleUpdateStatus = async (shipmentId, newStatus) => {
-    const result = await updateShipmentStatus(shipmentId, newStatus);
-    if (result.success) {
-      alert('Status pengiriman berhasil diupdate!');
-      loadData();
-    } else {
-      alert('Gagal update status: ' + result.error);
+  // Handle status update
+  const handleUpdateStatus = async () => {
+    if (!selectedShipment || !newStatus) return;
+
+    try {
+      const result = await updateShipmentStatus(selectedShipment.id, newStatus, statusNotes);
+      if (result.success) {
+        setShowUpdateModal(false);
+        setSelectedShipment(null);
+        setNewStatus('');
+        setStatusNotes('');
+        loadData();
+        alert('Status pengiriman berhasil diperbarui!');
+      } else {
+        alert('Gagal memperbarui status: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('Terjadi kesalahan saat memperbarui status');
     }
   };
 
+  // Handle delete shipment
   const handleDeleteShipment = async (shipmentId) => {
-    if (confirm('Yakin ingin menghapus pengiriman ini?')) {
+    if (!confirm('Apakah Anda yakin ingin menghapus pengiriman ini?')) return;
+
+    try {
       const result = await deleteShipment(shipmentId);
       if (result.success) {
-        alert('Pengiriman berhasil dihapus!');
         loadData();
+        alert('Pengiriman berhasil dihapus!');
       } else {
-        alert('Gagal hapus pengiriman: ' + result.error);
+        alert('Gagal menghapus pengiriman: ' + result.error);
       }
+    } catch (error) {
+      console.error('Error deleting shipment:', error);
+      alert('Terjadi kesalahan saat menghapus pengiriman');
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      orderId: '',
-      courier: 'JNE',
-      service: 'REG',
-      cost: '',
-      estimatedDays: '2-3 hari',
-      trackingNumber: '',
-      notes: ''
-    });
-    setEditingShipment(null);
-  };
-
-  const getStatusBadge = (status) => {
-    const statusConfig = {
-      preparing: { class: 'bg-warning text-dark', text: 'Mempersiapkan' },
-      in_transit: { class: 'bg-primary', text: 'Dalam Perjalanan' },
-      delivered: { class: 'bg-success', text: 'Terkirim' },
-      returned: { class: 'bg-danger', text: 'Dikembalikan' },
-      cancelled: { class: 'bg-secondary', text: 'Dibatalkan' }
-    };
-    
-    const config = statusConfig[status] || { class: 'bg-secondary', text: status };
-    return `<span class="badge ${config.class}">${config.text}</span>`;
-  };
-
+  // Format currency
   const formatCurrency = (amount) => {
-    if (typeof amount === 'string') {
-      if (amount.includes('Rp')) return amount;
-      amount = parseFloat(amount);
-    }
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
       minimumFractionDigits: 0
-    }).format(amount);
+    }).format(amount || 0);
   };
 
-  const formatDate = (date) => {
-    if (!date) return 'N/A';
-    const d = date.toDate ? date.toDate() : new Date(date);
-    return d.toLocaleDateString('id-ID', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+  // Get status badge class
+  const getStatusBadge = (status) => {
+    const badges = {
+      'preparing': 'bg-warning text-dark',
+      'in_transit': 'bg-info text-white',
+      'delivered': 'bg-success text-white',
+      'returned': 'bg-secondary text-white',
+      'cancelled': 'bg-danger text-white'
+    };
+    return badges[status] || 'bg-secondary text-white';
   };
 
-  const filteredShipments = statusFilter === 'all' 
-    ? shipments 
-    : shipments.filter(shipment => shipment.status === statusFilter);
+  // Get status text
+  const getStatusText = (status) => {
+    const statusTexts = {
+      'preparing': 'Mempersiapkan',
+      'in_transit': 'Dalam Perjalanan',
+      'delivered': 'Terkirim',
+      'returned': 'Dikembalikan',
+      'cancelled': 'Dibatalkan'
+    };
+    return statusTexts[status] || status;
+  };
+
+  if (loading || !userProfile) {
+    return (
+      <div className="d-flex justify-content-center align-items-center min-vh-100">
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (userProfile.role !== 'admin') {
+    return (
+      <div className="d-flex justify-content-center align-items-center min-vh-100">
+        <div className="alert alert-danger">
+          <h4>Akses Ditolak</h4>
+          <p>Anda tidak memiliki izin untuk mengakses halaman ini.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="d-flex">
       <Sidebar />
-      
-      {/* Main Content */}
-      <div className="main-content">
-        <div className="container-fluid py-4">
-          <div className="row">
-            <div className="col-12">
-              {/* Header */}
-              <div className="d-flex justify-content-between align-items-center mb-4">
-                <h2 className="h4 mb-0">🚚 Manajemen Pengiriman</h2>
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => setShowModal(true)}
-                >
-                  + Buat Pengiriman Baru
-                </button>
-              </div>
+      <div className="flex-grow-1 p-4" style={{ marginLeft: '280px', backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
+        {/* Header */}
+        <div className="d-flex justify-content-between align-items-center mb-4">
+          <div className="d-flex align-items-center">
+            <i className="fas fa-shipping-fast text-primary me-2"></i>
+            <h2 className="mb-0">Manajemen Pengiriman</h2>
+          </div>
+          <button 
+            className="btn btn-primary"
+            onClick={loadData}
+            disabled={isLoading}
+          >
+            <i className="fas fa-sync-alt me-2"></i>
+            {isLoading ? 'Loading...' : 'Refresh'}
+          </button>
+        </div>
 
-              {/* Loading State */}
-              {loading ? (
-                <div className="text-center py-5">
-                  <div className="spinner-border" role="status">
-                    <span className="visually-hidden">Loading...</span>
-                  </div>
-                  <p className="mt-2">Memuat data pengiriman...</p>
+        {/* Stats Cards */}
+        <div className="row mb-4">
+          <div className="col-md-3 mb-3">
+            <div className="card bg-primary text-white h-100">
+              <div className="card-body d-flex align-items-center">
+                <div className="flex-grow-1">
+                  <h3 className="mb-0">{stats.total || 0}</h3>
+                  <p className="mb-0">Total Pengiriman</p>
                 </div>
-              ) : (
-                <>
-                  {/* Stats Cards */}
-                  <div className="row mb-4">
-                    <div className="col-lg-3 col-md-6 mb-3">
-                      <div className="card bg-primary text-white h-100">
-                        <div className="card-body text-center">
-                          <h3 className="card-title">📦</h3>
-                          <h4>{stats.totalShipments}</h4>
-                          <p className="card-text">Total Pengiriman</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="col-lg-3 col-md-6 mb-3">
-                      <div className="card bg-warning text-dark h-100">
-                        <div className="card-body text-center">
-                          <h3 className="card-title">🚛</h3>
-                          <h4>{stats.inTransit}</h4>
-                          <p className="card-text">Dalam Perjalanan</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="col-lg-3 col-md-6 mb-3">
-                      <div className="card bg-success text-white h-100">
-                        <div className="card-body text-center">
-                          <h3 className="card-title">✅</h3>
-                          <h4>{stats.delivered}</h4>
-                          <p className="card-text">Terkirim</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="col-lg-3 col-md-6 mb-3">
-                      <div className="card bg-info text-white h-100">
-                        <div className="card-body text-center">
-                          <h3 className="card-title">💰</h3>
-                          <h4 className="small-text">{formatCurrency(stats.totalCost)}</h4>
-                          <p className="card-text">Total Biaya</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Filter and Actions */}
-                  <div className="row mb-3">
-                    <div className="col-md-4">
-                      <select 
-                        className="form-select"
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                      >
-                        <option value="all">Semua Status</option>
-                        <option value="preparing">Mempersiapkan</option>
-                        <option value="in_transit">Dalam Perjalanan</option>
-                        <option value="delivered">Terkirim</option>
-                        <option value="returned">Dikembalikan</option>
-                        <option value="cancelled">Dibatalkan</option>
-                      </select>
-                    </div>
-                    <div className="col-md-8 text-end">
-                      <button className="btn btn-primary" onClick={loadData}>
-                        🔄 Refresh
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Shipments Table */}
-                  <div className="card">
-                    <div className="card-header">
-                      <h5 className="mb-0">Daftar Pengiriman</h5>
-                    </div>
-                    <div className="card-body">
-                      {filteredShipments.length === 0 ? (
-                        <div className="text-center py-4">
-                          <p className="text-muted">Tidak ada data pengiriman</p>
-                        </div>
-                      ) : (
-                        <div className="table-responsive">
-                          <table className="table table-hover">
-                            <thead className="table-light">
-                              <tr>
-                                <th>No. Pengiriman</th>
-                                <th>No. Pesanan</th>
-                                <th>Reseller</th>
-                                <th>Kurir</th>
-                                <th>Alamat Tujuan</th>
-                                <th>Biaya</th>
-                                <th>Status</th>
-                                <th>Tanggal</th>
-                                <th>Aksi</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {filteredShipments.map((shipment) => (
-                                <tr key={shipment.id}>
-                                  <td>
-                                    <strong>{shipment.shipmentNumber}</strong>
-                                    {shipment.trackingNumber && (
-                                      <div className="text-muted small">
-                                        Resi: {shipment.trackingNumber}
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td>#{shipment.orderNumber}</td>
-                                  <td>
-                                    <div>{shipment.resellerName}</div>
-                                    <div className="text-muted small">{shipment.resellerEmail}</div>
-                                  </td>
-                                  <td>
-                                    <div>{shipment.courier} - {shipment.service}</div>
-                                    <div className="text-muted small">Est: {shipment.estimatedDays}</div>
-                                  </td>
-                                  <td>
-                                    <div>{shipment.shippingAddress?.recipientName || 'N/A'}</div>
-                                    <div className="text-muted small">
-                                      {shipment.shippingAddress?.city || 'N/A'}, {shipment.shippingAddress?.province || 'N/A'}
-                                    </div>
-                                  </td>
-                                  <td className="fw-bold text-success">{formatCurrency(shipment.cost)}</td>
-                                  <td>
-                                    <div dangerouslySetInnerHTML={{ __html: getStatusBadge(shipment.status) }} />
-                                  </td>
-                                  <td>{formatDate(shipment.createdAt)}</td>
-                                  <td>
-                                    <div className="btn-group btn-group-sm">
-                                      <select 
-                                        className="form-select form-select-sm"
-                                        value={shipment.status}
-                                        onChange={(e) => handleUpdateStatus(shipment.id, e.target.value)}
-                                      >
-                                        <option value="preparing">Mempersiapkan</option>
-                                        <option value="in_transit">Dalam Perjalanan</option>
-                                        <option value="delivered">Terkirim</option>
-                                        <option value="returned">Dikembalikan</option>
-                                        <option value="cancelled">Dibatalkan</option>
-                                      </select>
-                                      <button 
-                                        className="btn btn-outline-danger btn-sm"
-                                        onClick={() => handleDeleteShipment(shipment.id)}
-                                        title="Hapus Pengiriman"
-                                      >
-                                        🗑️
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
+                <i className="fas fa-box fa-2x opacity-75"></i>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3 mb-3">
+            <div className="card bg-warning text-dark h-100">
+              <div className="card-body d-flex align-items-center">
+                <div className="flex-grow-1">
+                  <h3 className="mb-0">{stats.preparing || 0}</h3>
+                  <p className="mb-0">Dalam Persiapan</p>
+                </div>
+                <i className="fas fa-clock fa-2x opacity-75"></i>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3 mb-3">
+            <div className="card bg-success text-white h-100">
+              <div className="card-body d-flex align-items-center">
+                <div className="flex-grow-1">
+                  <h3 className="mb-0">{stats.delivered || 0}</h3>
+                  <p className="mb-0">Terkirim</p>
+                </div>
+                <i className="fas fa-check-circle fa-2x opacity-75"></i>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3 mb-3">
+            <div className="card bg-info text-white h-100">
+              <div className="card-body d-flex align-items-center">
+                <div className="flex-grow-1">
+                  <h3 className="mb-0">{formatCurrency(stats.totalCost)}</h3>
+                  <p className="mb-0">Total Biaya</p>
+                </div>
+                <i className="fas fa-money-bill-wave fa-2x opacity-75"></i>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Create Shipment Modal */}
-        {showModal && (
-          <div className="modal fade show d-block" style={{backgroundColor: 'rgba(0,0,0,0.5)'}}>
-            <div className="modal-dialog modal-lg">
+        {/* Filters */}
+        <div className="card mb-4">
+          <div className="card-body">
+            <div className="row">
+              <div className="col-md-4">
+                <label className="form-label">Status</label>
+                <select 
+                  className="form-select"
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                >
+                  <option value="all">Semua Status</option>
+                  <option value="preparing">Mempersiapkan</option>
+                  <option value="in_transit">Dalam Perjalanan</option>
+                  <option value="delivered">Terkirim</option>
+                  <option value="returned">Dikembalikan</option>
+                  <option value="cancelled">Dibatalkan</option>
+                </select>
+              </div>
+              <div className="col-md-8">
+                <label className="form-label">Cari</label>
+                <div className="input-group">
+                  <span className="input-group-text">
+                    <i className="fas fa-search"></i>
+                  </span>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Cari berdasarkan nomor pengiriman, tracking, atau reseller..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Shipments Table */}
+        <div className="card">
+          <div className="card-header d-flex justify-content-between align-items-center">
+            <h5 className="mb-0">Daftar Pengiriman</h5>
+            {selectedShipments.length > 0 && (
+              <div className="badge bg-primary">
+                {selectedShipments.length} item terpilih
+              </div>
+            )}
+          </div>
+          <div className="card-body p-0">
+            {isLoading ? (
+              <div className="text-center p-4">
+                <div className="spinner-border text-primary" role="status">
+                  <span className="visually-hidden">Loading...</span>
+                </div>
+              </div>
+            ) : (
+              <div className="table-responsive">
+                <table className="table table-hover mb-0">
+                  <thead className="table-light">
+                    <tr>
+                      <th>
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={selectedShipments.length === paginatedShipments.length && paginatedShipments.length > 0}
+                          onChange={handleSelectAll}
+                        />
+                      </th>
+                      <th>No. Pengiriman</th>
+                      <th>No. Pesanan</th>
+                      <th>Reseller</th>
+                      <th>Kurir</th>
+                      <th>Alamat Tujuan</th>
+                      <th>Biaya</th>
+                      <th>Status</th>
+                      <th>Tanggal</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedShipments.length === 0 ? (
+                      <tr>
+                        <td colSpan="10" className="text-center py-4">
+                          <div className="text-muted">
+                            <i className="fas fa-inbox fa-3x mb-3"></i>
+                            <p>Tidak ada data pengiriman</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedShipments.map((shipment) => (
+                        <tr key={shipment.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              className="form-check-input"
+                              checked={selectedShipments.includes(shipment.id)}
+                              onChange={() => handleSelectShipment(shipment.id)}
+                            />
+                          </td>
+                          <td>
+                            <div>
+                              <strong>{shipment.shipmentNumber}</strong>
+                              <br />
+                              <small className="text-muted">
+                                Resi: {shipment.trackingNumber}
+                              </small>
+                            </div>
+                          </td>
+                          <td>
+                            <strong>#{shipment.orderNumber}</strong>
+                          </td>
+                          <td>
+                            <div>
+                              <strong>{shipment.resellerName || 'Unknown'}</strong>
+                              <br />
+                              <small className="text-muted">
+                                {shipment.resellerEmail}
+                              </small>
+                            </div>
+                          </td>
+                          <td>
+                            <div>
+                              <strong>{shipment.courier} - {shipment.service}</strong>
+                              <br />
+                              <small className="text-muted">
+                                Est: {shipment.estimatedDays}
+                              </small>
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ maxWidth: '200px' }}>
+                              {shipment.shippingAddress?.street || 'N/A'}
+                              <br />
+                              <small className="text-muted">
+                                {shipment.shippingAddress?.city}, {shipment.shippingAddress?.province}
+                              </small>
+                            </div>
+                          </td>
+                          <td>
+                            <strong>{formatCurrency(shipment.cost)}</strong>
+                          </td>
+                          <td>
+                            <span className={`badge ${getStatusBadge(shipment.status)}`}>
+                              {getStatusText(shipment.status)}
+                            </span>
+                          </td>
+                          <td>
+                            <small>
+                              {shipment.createdDate || 'N/A'}
+                            </small>
+                          </td>
+                          <td>
+                            <div className="btn-group" role="group">
+                              <button
+                                className="btn btn-sm btn-outline-primary"
+                                onClick={() => {
+                                  setSelectedShipment(shipment);
+                                  setNewStatus(shipment.status);
+                                  setShowUpdateModal(true);
+                                }}
+                                title="Update Status"
+                              >
+                                <i className="fas fa-edit"></i>
+                              </button>
+                              <button
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => handleDeleteShipment(shipment.id)}
+                                title="Hapus"
+                              >
+                                <i className="fas fa-trash"></i>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="card-footer">
+              <nav aria-label="Page navigation">
+                <ul className="pagination justify-content-center mb-0">
+                  <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
+                    <button
+                      className="page-link"
+                      onClick={() => setCurrentPage(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </button>
+                  </li>
+                  {[...Array(totalPages)].map((_, index) => (
+                    <li key={index + 1} className={`page-item ${currentPage === index + 1 ? 'active' : ''}`}>
+                      <button
+                        className="page-link"
+                        onClick={() => setCurrentPage(index + 1)}
+                      >
+                        {index + 1}
+                      </button>
+                    </li>
+                  ))}
+                  <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
+                    <button
+                      className="page-link"
+                      onClick={() => setCurrentPage(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                    </button>
+                  </li>
+                </ul>
+              </nav>
+            </div>
+          )}
+        </div>
+
+        {/* Update Status Modal */}
+        {showUpdateModal && (
+          <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
               <div className="modal-content">
                 <div className="modal-header">
-                  <h5 className="modal-title">Buat Pengiriman Baru</h5>
-                  <button 
-                    type="button" 
+                  <h5 className="modal-title">Update Status Pengiriman</h5>
+                  <button
+                    type="button"
                     className="btn-close"
-                    onClick={() => {
-                      setShowModal(false);
-                      resetForm();
-                    }}
+                    onClick={() => setShowUpdateModal(false)}
                   ></button>
                 </div>
-                <form onSubmit={handleCreateShipment}>
-                  <div className="modal-body">
-                    <div className="row">
-                      <div className="col-md-6">
-                        <div className="mb-3">
-                          <label className="form-label">Pilih Pesanan *</label>
-                          <select 
-                            className="form-select"
-                            value={formData.orderId}
-                            onChange={(e) => setFormData({...formData, orderId: e.target.value})}
-                            required
-                          >
-                            <option value="">-- Pilih Pesanan --</option>
-                            {orders.map(order => (
-                              <option key={order.id} value={order.id}>
-                                #{order.orderNumber} - {order.resellerName} ({formatCurrency(order.totalAmount)})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="col-md-6">
-                        <div className="mb-3">
-                          <label className="form-label">Kurir</label>
-                          <select 
-                            className="form-select"
-                            value={formData.courier}
-                            onChange={(e) => setFormData({...formData, courier: e.target.value})}
-                          >
-                            <option value="JNE">JNE</option>
-                            <option value="JNT">J&T Express</option>
-                            <option value="POS">Pos Indonesia</option>
-                            <option value="TIKI">TIKI</option>
-                            <option value="SiCepat">SiCepat</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="row">
-                      <div className="col-md-6">
-                        <div className="mb-3">
-                          <label className="form-label">Layanan</label>
-                          <select 
-                            className="form-select"
-                            value={formData.service}
-                            onChange={(e) => setFormData({...formData, service: e.target.value})}
-                          >
-                            <option value="REG">Regular</option>
-                            <option value="YES">Yes (1 hari)</option>
-                            <option value="OKE">OKE (2-3 hari)</option>
-                            <option value="EXPRESS">Express</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="col-md-6">
-                        <div className="mb-3">
-                          <label className="form-label">Biaya Pengiriman</label>
-                          <input 
-                            type="number"
-                            className="form-control"
-                            value={formData.cost}
-                            onChange={(e) => setFormData({...formData, cost: e.target.value})}
-                            placeholder="0"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="row">
-                      <div className="col-md-6">
-                        <div className="mb-3">
-                          <label className="form-label">Estimasi Pengiriman</label>
-                          <input 
-                            type="text"
-                            className="form-control"
-                            value={formData.estimatedDays}
-                            onChange={(e) => setFormData({...formData, estimatedDays: e.target.value})}
-                            placeholder="2-3 hari"
-                          />
-                        </div>
-                      </div>
-                      <div className="col-md-6">
-                        <div className="mb-3">
-                          <label className="form-label">Nomor Resi</label>
-                          <input 
-                            type="text"
-                            className="form-control"
-                            value={formData.trackingNumber}
-                            onChange={(e) => setFormData({...formData, trackingNumber: e.target.value})}
-                            placeholder="Kosongkan jika belum ada"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mb-3">
-                      <label className="form-label">Catatan</label>
-                      <textarea 
-                        className="form-control"
-                        rows="3"
-                        value={formData.notes}
-                        onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                        placeholder="Catatan tambahan untuk pengiriman..."
-                      ></textarea>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Pengiriman</label>
+                    <div className="form-control-plaintext">
+                      <strong>{selectedShipment?.shipmentNumber}</strong> - {selectedShipment?.orderNumber}
                     </div>
                   </div>
-                  <div className="modal-footer">
-                    <button 
-                      type="button" 
-                      className="btn btn-secondary"
-                      onClick={() => {
-                        setShowModal(false);
-                        resetForm();
-                      }}
+                  <div className="mb-3">
+                    <label className="form-label">Status Baru</label>
+                    <select
+                      className="form-select"
+                      value={newStatus}
+                      onChange={(e) => setNewStatus(e.target.value)}
                     >
-                      Batal
-                    </button>
-                    <button type="submit" className="btn btn-primary">
-                      Buat Pengiriman
-                    </button>
+                      <option value="preparing">Mempersiapkan</option>
+                      <option value="in_transit">Dalam Perjalanan</option>
+                      <option value="delivered">Terkirim</option>
+                      <option value="returned">Dikembalikan</option>
+                      <option value="cancelled">Dibatalkan</option>
+                    </select>
                   </div>
-                </form>
+                  <div className="mb-3">
+                    <label className="form-label">Catatan</label>
+                    <textarea
+                      className="form-control"
+                      rows="3"
+                      value={statusNotes}
+                      onChange={(e) => setStatusNotes(e.target.value)}
+                      placeholder="Catatan untuk update status (opsional)"
+                    ></textarea>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setShowUpdateModal(false)}
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleUpdateStatus}
+                  >
+                    Update Status
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         )}
       </div>
-
-      <style jsx>{`
-        .main-content {
-          margin-left: 250px;
-          min-height: 100vh;
-          transition: margin-left 0.3s ease;
-          width: calc(100% - 250px);
-        }
-
-        @media (max-width: 767.98px) {
-          .main-content {
-            margin-left: 0;
-            width: 100%;
-            padding-top: 70px;
-          }
-        }
-
-        @media (max-width: 1024px) and (min-width: 768px) {
-          .main-content {
-            margin-left: 200px;
-            width: calc(100% - 200px);
-          }
-        }
-
-        .card {
-          border: none;
-          box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-          border-radius: 0.375rem;
-        }
-
-        .card-body {
-          padding: 1.5rem;
-        }
-
-        .card-header {
-          background-color: #f8f9fa;
-          border-bottom: 1px solid #dee2e6;
-          padding: 1rem 1.5rem;
-          border-radius: 0.375rem 0.375rem 0 0;
-        }
-
-        .table-responsive {
-          border-radius: 0.375rem;
-        }
-
-        .badge {
-          font-size: 0.75rem;
-          padding: 0.35em 0.65em;
-        }
-
-        .btn-sm {
-          padding: 0.25rem 0.5rem;
-          font-size: 0.875rem;
-        }
-
-        .form-select-sm {
-          padding: 0.25rem 0.5rem;
-          font-size: 0.875rem;
-        }
-
-        .small-text {
-          font-size: 0.9rem;
-        }
-
-        .modal-content {
-          border: none;
-          border-radius: 0.5rem;
-          box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.175);
-        }
-
-        .modal-header {
-          border-bottom: 1px solid #dee2e6;
-          padding: 1rem 1.5rem;
-        }
-
-        .modal-body {
-          padding: 1.5rem;
-        }
-
-        .modal-footer {
-          border-top: 1px solid #dee2e6;
-          padding: 1rem 1.5rem;
-        }
-
-        /* Responsive adjustments for cards */
-        @media (max-width: 767.98px) {
-          .card-body {
-            padding: 1rem;
-          }
-          
-          .h4 {
-            font-size: 1.1rem;
-          }
-          
-          .badge {
-            font-size: 0.7rem;
-          }
-          
-          .small-text {
-            font-size: 0.8rem;
-          }
-        }
-
-        /* Responsive table */
-        @media (max-width: 991.98px) {
-          .table-responsive {
-            font-size: 0.875rem;
-          }
-          
-          .table th,
-          .table td {
-            padding: 0.5rem;
-          }
-        }
-
-        /* Button group spacing */
-        .btn-group .btn {
-          margin: 0;
-        }
-
-        .btn-group .form-select {
-          border-radius: 0.375rem 0 0 0.375rem;
-        }
-
-        .btn-group .btn-outline-danger {
-          border-radius: 0 0.375rem 0.375rem 0;
-        }
-
-        /* Prevent text overflow in table cells */
-        .table td {
-          word-wrap: break-word;
-          max-width: 200px;
-        }
-
-        .table td .small {
-          font-size: 0.8rem;
-        }
-
-        /* Loading state styling */
-        .spinner-border {
-          width: 3rem;
-          height: 3rem;
-        }
-      `}</style>
     </div>
   );
 }
