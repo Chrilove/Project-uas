@@ -466,7 +466,7 @@ export const getOrdersByPaymentStatus = async (paymentStatus) => {
   }
 };
 
-// Calculate order statistics
+// Calculate order statistics - FIXED VERSION
 export const getOrderStatistics = async (resellerId = null) => {
   try {
     let q;
@@ -487,16 +487,28 @@ export const getOrderStatistics = async (resellerId = null) => {
     });
     
     const stats = {
+      // Basic counts
       total: orders.length,
+      totalOrders: orders.length, // Added this for compatibility
       pending: orders.filter(o => o.status === 'pending').length,
+      pendingOrders: orders.filter(o => o.status === 'pending').length, // Added this
       confirmed: orders.filter(o => o.status === 'confirmed').length,
+      confirmedOrders: orders.filter(o => o.status === 'confirmed').length, // Added this
       processing: orders.filter(o => o.status === 'processing').length,
+      processingOrders: orders.filter(o => o.status === 'processing').length, // Added this
       shipped: orders.filter(o => o.status === 'shipped').length,
+      shippedOrders: orders.filter(o => o.status === 'shipped').length, // Added this
       completed: orders.filter(o => o.status === 'completed').length,
+      completedOrders: orders.filter(o => o.status === 'completed').length, // Added this
       cancelled: orders.filter(o => o.status === 'cancelled').length,
+      cancelledOrders: orders.filter(o => o.status === 'cancelled').length, // Added this
+      
+      // Payment status counts
       waitingPayment: orders.filter(o => o.paymentStatus === 'waiting_payment').length,
       waitingVerification: orders.filter(o => o.paymentStatus === 'waiting_verification').length,
       paid: orders.filter(o => o.paymentStatus === 'paid').length,
+      
+      // Financial calculations
       totalRevenue: orders
         .filter(o => o.paymentStatus === 'paid')
         .reduce((sum, o) => sum + (o.totalAmount || 0), 0),
@@ -511,7 +523,6 @@ export const getOrderStatistics = async (resellerId = null) => {
     return { success: false, error: error.message };
   }
 };
-
 // Delete order (for admin only)
 export const deleteOrder = async (orderId) => {
   try {
