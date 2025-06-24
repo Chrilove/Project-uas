@@ -448,7 +448,7 @@ export default function AdminOrdersPage() {
                                       <div className="mb-3">
                                         <i className="fas fa-search fa-2x text-muted"></i>
                                       </div>
-                                      <h6>Tidak ada hasil untuk "{searchTerm}"</h6>
+                                      <h6>Tidak ada hasil untuk &quot;{searchTerm}&quot;</h6>
                                       <button 
                                         className="btn btn-sm btn-outline-primary mt-2"
                                         onClick={() => setSearchTerm('')}
@@ -461,7 +461,7 @@ export default function AdminOrdersPage() {
                                       <div className="mb-3">
                                         <i className="fas fa-filter fa-2x text-muted"></i>
                                       </div>
-                                      <h6>Tidak ada pesanan dengan status "{getOrderStatusText(statusFilter)}"</h6>
+                                      <h6>Tidak ada pesanan dengan status &quot;{getOrderStatusText(statusFilter)}&quot;</h6>
                                       <button 
                                         className="btn btn-sm btn-outline-primary mt-2"
                                         onClick={() => setStatusFilter('all')}
