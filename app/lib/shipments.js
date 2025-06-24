@@ -9,7 +9,8 @@ import {
   query,
   where,
   orderBy,
-  serverTimestamp 
+  serverTimestamp,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -20,14 +21,23 @@ export const generateTrackingNumber = () => {
   return `SHIP${new Date().getFullYear()}${timestamp}${random}`;
 };
 
-// Create shipment from order
-export const createShipmentFromOrder = async (orderData) => {
+// Create shipment from order - FIXED VERSION
+export const createShipmentFromOrder = async (orderData, shippingData = {}) => {
   try {
-    const trackingNumber = generateTrackingNumber();
+    // Debug: Log orderData untuk memastikan struktur data
+    console.log('Order data received:', orderData);
+    
+    // Generate tracking number if not provided
+    const trackingNumber = shippingData.trackingNumber || generateTrackingNumber();
+    
+    // Generate shipment number
+    const shipmentNumber = `SHP${Date.now().toString().slice(-6)}`;
     
     const shipment = {
+      shipmentNumber,
       trackingNumber,
-      orderId: orderData.orderId,
+      // FIX: Use orderData.id instead of orderData.orderId
+      orderId: orderData.id || orderData._id || orderData.orderId, 
       orderNumber: orderData.orderNumber,
       customerId: orderData.customerId,
       customerName: orderData.customerName,
@@ -36,23 +46,36 @@ export const createShipmentFromOrder = async (orderData) => {
       shippingAddress: orderData.shippingAddress,
       resellerId: orderData.resellerId,
       resellerName: orderData.resellerName,
+      resellerEmail: orderData.resellerEmail,
       items: orderData.items,
       totalWeight: orderData.totalWeight || 0,
       shippingMethod: orderData.shippingMethod,
-      shippingCost: orderData.shippingCost,
-      courier: orderData.courier || 'JNE',
-      status: 'pending', // pending, processed, shipped, delivered, cancelled
-      estimatedDelivery: orderData.estimatedDelivery,
+      
+      // Use shipping data from form
+      courier: shippingData.courier || orderData.courier || 'JNE',
+      service: shippingData.service || 'REG',
+      cost: shippingData.cost || orderData.shippingCost || 0,
+      estimatedDays: shippingData.estimatedDays || '2-3 hari',
+      notes: shippingData.notes || orderData.notes || '',
+      
+      status: 'preparing', // preparing, in_transit, delivered, returned, cancelled
+      estimatedDelivery: shippingData.estimatedDelivery || orderData.estimatedDelivery,
       actualDelivery: null,
-      notes: orderData.notes || '',
       adminNotes: '',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
 
+    // Validasi orderId sebelum menyimpan
+    if (!shipment.orderId) {
+      throw new Error('Order ID is required but not found in orderData');
+    }
+
+    console.log('Shipment data to be saved:', shipment);
+    
     const docRef = await addDoc(collection(db, 'shipments'), shipment);
     console.log('Shipment created with ID:', docRef.id);
-    return { success: true, shipmentId: docRef.id, trackingNumber };
+    return { success: true, shipmentId: docRef.id, trackingNumber, shipmentNumber };
   } catch (error) {
     console.error('Error creating shipment:', error);
     return { success: false, error: error.message };
@@ -168,7 +191,8 @@ export const getShipmentsByReseller = async (resellerId) => {
     return { success: false, error: error.message };
   }
 };
-// Hitung statistik pengiriman - FIXED VERSION
+
+// Get shipment statistics - UPDATED VERSION
 export const getShipmentStats = async () => {
   try {
     const querySnapshot = await getDocs(collection(db, 'shipments'));
@@ -176,16 +200,20 @@ export const getShipmentStats = async () => {
 
     const stats = {
       total: shipments.length,
-      totalShipments: shipments.length, // Added for compatibility
+      totalShipments: shipments.length,
+      preparing: shipments.filter(s => s.status === 'preparing').length,
+      inTransit: shipments.filter(s => s.status === 'in_transit').length,
+      delivered: shipments.filter(s => s.status === 'delivered').length,
+      returned: shipments.filter(s => s.status === 'returned').length,
+      cancelled: shipments.filter(s => s.status === 'cancelled').length,
+      
+      // Legacy support for old status names
       pending: shipments.filter(s => s.status === 'pending').length,
       processed: shipments.filter(s => s.status === 'processed').length,
       shipped: shipments.filter(s => s.status === 'shipped').length,
-      inTransit: shipments.filter(s => s.status === 'shipped').length, // Added this
-      delivered: shipments.filter(s => s.status === 'delivered').length,
-      cancelled: shipments.filter(s => s.status === 'cancelled').length,
       
       // Calculate total shipping cost
-      totalCost: shipments.reduce((sum, s) => sum + (s.shippingCost || 0), 0)
+      totalCost: shipments.reduce((sum, s) => sum + (parseFloat(s.cost) || 0), 0)
     };
 
     return { success: true, stats };
@@ -194,7 +222,8 @@ export const getShipmentStats = async () => {
     return { success: false, error: error.message };
   }
 };
-// Hapus pengiriman (admin only)
+
+// Delete shipment (admin only)
 export const deleteShipment = async (shipmentId) => {
   try {
     const shipmentRef = doc(db, 'shipments', shipmentId);
